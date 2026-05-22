@@ -1,4 +1,3 @@
-import os
 import socket
 import struct
 import hashlib
@@ -9,6 +8,10 @@ from Crypto.PublicKey import RSA
 from Crypto.Random import get_random_bytes
 from Crypto.Util.Padding import pad, unpad
 
+
+# =========================================================
+# CONSTANTS
+# =========================================================
 
 DES_KEY_SIZE = 8
 DES_BLOCK_SIZE = 8
@@ -26,6 +29,7 @@ def generate_des_key_iv() -> Tuple[bytes, bytes]:
     """
     key = get_random_bytes(DES_KEY_SIZE)
     iv = get_random_bytes(DES_BLOCK_SIZE)
+
     return key, iv
 
 
@@ -38,6 +42,7 @@ def encrypt_des_cbc(plaintext: bytes) -> Tuple[bytes, bytes, bytes]:
         iv
         ciphertext
     """
+
     key, iv = generate_des_key_iv()
 
     cipher = DES.new(key, DES.MODE_CBC, iv)
@@ -51,8 +56,9 @@ def encrypt_des_cbc(plaintext: bytes) -> Tuple[bytes, bytes, bytes]:
 
 def decrypt_des_cbc(key: bytes, iv: bytes, ciphertext: bytes) -> bytes:
     """
-    Decrypt DES-CBC ciphertext and remove padding.
+    Decrypt DES-CBC ciphertext.
     """
+
     cipher = DES.new(key, DES.MODE_CBC, iv)
 
     padded_plaintext = cipher.decrypt(ciphertext)
@@ -70,6 +76,7 @@ def compute_sha256(data: bytes) -> bytes:
     """
     Compute SHA-256 digest.
     """
+
     return hashlib.sha256(data).digest()
 
 
@@ -77,6 +84,7 @@ def verify_sha256(data: bytes, expected_hash: bytes) -> bool:
     """
     Verify SHA-256 digest.
     """
+
     actual_hash = compute_sha256(data)
 
     return actual_hash == expected_hash
@@ -88,16 +96,18 @@ def verify_sha256(data: bytes, expected_hash: bytes) -> bool:
 
 def load_public_key(path: str):
     """
-    Load RSA public key from PEM file.
+    Load RSA public key.
     """
+
     with open(path, "rb") as f:
         return RSA.import_key(f.read())
 
 
 def load_private_key(path: str):
     """
-    Load RSA private key from PEM file.
+    Load RSA private key.
     """
+
     with open(path, "rb") as f:
         return RSA.import_key(f.read())
 
@@ -106,6 +116,7 @@ def rsa_encrypt_des_key(des_key: bytes, public_key) -> bytes:
     """
     Encrypt DES key using RSA-OAEP.
     """
+
     cipher_rsa = PKCS1_OAEP.new(public_key)
 
     encrypted_key = cipher_rsa.encrypt(des_key)
@@ -117,6 +128,7 @@ def rsa_decrypt_des_key(encrypted_key: bytes, private_key) -> bytes:
     """
     Decrypt DES key using RSA-OAEP.
     """
+
     cipher_rsa = PKCS1_OAEP.new(private_key)
 
     des_key = cipher_rsa.decrypt(encrypted_key)
@@ -134,7 +146,7 @@ def build_packet(
     sha256_hash: bytes
 ) -> bytes:
     """
-    Build Lab 8 packet format.
+    Build Lab 8 packet.
 
     Format:
         [len_key: 4 bytes]
@@ -149,12 +161,19 @@ def build_packet(
 
     packet = b""
 
+    # key length
     packet += struct.pack("!I", len_key)
+
+    # encrypted key
     packet += encrypted_des_key
 
+    # ciphertext length
     packet += struct.pack("!I", len_cipher)
+
+    # ciphertext
     packet += ciphertext_with_iv
 
+    # sha256
     packet += sha256_hash
 
     return packet
@@ -209,7 +228,7 @@ def parse_packet(packet: bytes):
 
 def recv_exact(sock: socket.socket, size: int) -> bytes:
     """
-    Receive exactly 'size' bytes from socket.
+    Receive exactly size bytes from socket.
     """
 
     data = b""
@@ -229,12 +248,13 @@ def send_packet(sock: socket.socket, packet: bytes):
     """
     Send packet through socket.
     """
+
     sock.sendall(packet)
 
 
 def receive_packet(sock: socket.socket) -> bytes:
     """
-    Receive Lab 8 packet from socket.
+    Receive complete Lab 8 packet from socket.
     """
 
     # Read key length
@@ -263,3 +283,11 @@ def receive_packet(sock: socket.socket) -> bytes:
     )
 
     return packet
+
+
+# =========================================================
+# BACKWARD COMPATIBILITY
+# =========================================================
+
+build_secure_packet = build_packet
+parse_secure_packet = parse_packet
