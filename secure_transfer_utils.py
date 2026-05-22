@@ -33,6 +33,10 @@ def sha256_digest(data: bytes) -> bytes:
     return hashlib.sha256(data).digest()
 
 
+# Backward compatibility
+sha256_hash = sha256_digest
+
+
 # =========================================================
 # DES HELPERS
 # =========================================================
@@ -188,7 +192,7 @@ def rsa_decrypt_key(encrypted_key: bytes, private_key) -> bytes:
     return des_key
 
 
-# Backward-compatible aliases
+# Backward compatibility
 encrypt_des_key_rsa = rsa_encrypt_key
 decrypt_des_key_rsa = rsa_decrypt_key
 
@@ -248,29 +252,29 @@ def parse_packet(packet: bytes):
 
     cursor = 0
 
-    # key length
+    # Read encrypted key length
     key_len = unpack_u32(packet[cursor:cursor + 4])
     cursor += 4
 
-    # encrypted key
+    # Read encrypted key
     encrypted_key = packet[cursor:cursor + key_len]
     cursor += key_len
 
-    # ciphertext length
+    # Read ciphertext length
     cipher_len = unpack_u32(packet[cursor:cursor + 4])
     cursor += 4
 
-    # ciphertext
+    # Read ciphertext
     ciphertext = packet[cursor:cursor + cipher_len]
     cursor += cipher_len
 
-    # hash
+    # Read SHA256 hash
     hash_value = packet[cursor:cursor + SHA256_DIGEST_SIZE]
 
     return encrypted_key, ciphertext, hash_value
 
 
-# Backward-compatible aliases
+# Backward compatibility
 build_secure_packet = build_packet
 parse_secure_packet = parse_packet
 
