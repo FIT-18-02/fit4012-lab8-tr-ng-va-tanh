@@ -5,6 +5,7 @@ from Crypto.Cipher import DES, PKCS1_OAEP
 from Crypto.PublicKey import RSA
 from Crypto.Random import get_random_bytes
 
+
 # =========================================================
 # CONSTANTS
 # =========================================================
@@ -180,7 +181,7 @@ def rsa_decrypt(private_key, encrypted_data: bytes) -> bytes:
 
 def pack_u32(value: int) -> bytes:
     """
-    Pack unsigned int to 4 bytes network byte order.
+    Pack unsigned int into 4 bytes network byte order.
     """
 
     return struct.pack("!I", value)
@@ -212,14 +213,19 @@ def build_packet(
 
     packet = b""
 
+    # encrypted DES key length
     packet += pack_u32(len(encrypted_des_key))
 
+    # encrypted DES key
     packet += encrypted_des_key
 
+    # ciphertext length
     packet += pack_u32(len(ciphertext))
 
+    # ciphertext
     packet += ciphertext
 
+    # SHA256 hash
     packet += sha256_digest
 
     return packet
@@ -318,3 +324,29 @@ def receive_packet(sock) -> bytes:
     packet = recv_exact(sock, packet_length)
 
     return packet
+
+
+def recv_secure_packet(sock):
+    """
+    Receive secure packet and parse it.
+    """
+
+    packet = receive_packet(sock)
+
+    return parse_packet(packet)
+
+
+# =========================================================
+# BACKWARD COMPATIBILITY
+# =========================================================
+
+des_encrypt_cbc = des_encrypt
+des_decrypt_cbc = des_decrypt
+
+sha256_digest = sha256_hash
+
+encrypt_des_key_rsa = rsa_encrypt
+decrypt_des_key_rsa = rsa_decrypt
+
+build_secure_packet = build_packet
+parse_secure_packet = parse_packet
