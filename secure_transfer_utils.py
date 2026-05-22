@@ -1,158 +1,253 @@
 import hashlib
 import os
 import struct
-from pathlib import Path
-from typing import Tuple
-
 from Crypto.Cipher import DES, PKCS1_OAEP
 from Crypto.PublicKey import RSA
 from Crypto.Util.Padding import pad, unpad
 
-# =========================
-# CONSTANTS
-# =========================
-DES_BLOCK_SIZE = 8
+
 DES_KEY_SIZE = 8
-DES_IV_SIZE = 8
-
-RSA_KEY_SIZE = 2048
-
-SHA256_DIGEST_SIZE = 32
+DES_BLOCK_SIZE = 8
+SHA256_SIZE = 32
 
 
-# =========================
-# HASH
-# =========================
-def sha256_digest(data: bytes) -> bytes:
+# =========================================================
+# DES helpers
+# =========================================================
+
+def generate_des_key():
+    """
+    Generate random 8-byte DES key
+    """
+    return os.urandom(DES_KEY_SIZE)
+
+
+def generate_iv():
+    """
+    Generate random 8-byte IV for DES-CBC
+    """
+    return os.urandom(DES_BLOCK_SIZE)
+
+
+def pkcs7_pad(data: bytes) -> bytes:
+    """
+    Apply PKCS#7 padding
+    """
+    return pad(data, DES_BLOCK_SIZE)
+
+
+def pkcs7_unpad(data: bytes) -> bytes:
+    """
+    Remove PKCS#7 padding
+    """
+    return unpad(data, DES_BLOCK_SIZE)
+
+
+def des_encrypt_cbc(key: bytes, plaintext: bytes) -> bytes:
+    """
+    Encrypt plaintext using DES-CBC
+
+    Returns:
+        iv + ciphertext
+    """
+    iv = generate_iv()
+
+    cipher = DES.new(key, DES.MODE_CBC, iv)
+
+    padded = pkcs7_pad(plaintext)
+
+    ciphertext = cipher.encrypt(padded)
+
+    return iv + ciphertext
+
+
+def des_decrypt_cbc(key: bytes, ciphertext_with_iv: bytes) -> bytes:
+    """
+    Decrypt DES-CBC ciphertext
+
+    Input format:
+        iv + ciphertext
+    """
+    iv = ciphertext_with_iv[:DES_BLOCK_SIZE]
+    ciphertext = ciphertext_with_iv[DES_BLOCK_SIZE:]
+
+    cipher = DES.new(key, DES.MODE_CBC, iv)
+
+    padded_plaintext = cipher.decrypt(ciphertext)
+
+    plaintext = pkcs7_unpad(padded_plaintext)
+
+    return plaintext
+
+
+# =========================================================
+# SHA-256 helpers
+# =========================================================
+
+def sha256_hash(data: bytes) -> bytes:
+    """
+    Compute SHA-256 hash
+    """
     return hashlib.sha256(data).digest()
 
 
-# =========================
-# DES
-# =========================
-def generate_des_key_iv() -> Tuple[bytes, bytes]:
-    return os.urandom(8), os.urandom(8)
+# =========================================================
+# RSA helpers
+# =========================================================
+
+def load_public_key(public_key_path: str):
+    """
+    Load RSA public key from PEM file
+    """
+    with open(public_key_path, "rb") as f:
+        return RSA.import_key(f.read())
 
 
-def encrypt_des_cbc(plaintext: bytes) -> Tuple[bytes, bytes, bytes]:
-    key, iv = generate_des_key_iv()
-
-    cipher = DES.new(key, DES.MODE_CBC, iv)
-    ct = cipher.encrypt(pad(plaintext, 8))
-
-    return key, iv, iv + ct
-
-
-def decrypt_des_cbc(key: bytes, data: bytes) -> bytes:
-    iv = data[:8]
-    ct = data[8:]
-
-    cipher = DES.new(key, DES.MODE_CBC, iv)
-    return unpad(cipher.decrypt(ct), 8)
+def load_private_key(private_key_path: str):
+    """
+    Load RSA private key from PEM file
+    """
+    with open(private_key_path, "rb") as f:
+        return RSA.import_key(f.read())
 
 
-# =========================
-# RSA
-# =========================
-def load_public_key(path: str | Path):
-    return RSA.import_key(Path(path).read_bytes())
+def rsa_encrypt_key(des_key: bytes, public_key) -> bytes:
+    """
+    Encrypt DES key using RSA-OAEP
+    """
+    cipher_rsa = PKCS1_OAEP.new(public_key)
+
+    encrypted_key = cipher_rsa.encrypt(des_key)
+
+    return encrypted_key
 
 
-def load_private_key(path: str | Path):
-    return RSA.import_key(Path(path).read_bytes())
+def rsa_decrypt_key(encrypted_key: bytes, private_key) -> bytes:
+    """
+    Decrypt DES key using RSA-OAEP
+    """
+    cipher_rsa = PKCS1_OAEP.new(private_key)
+
+    des_key = cipher_rsa.decrypt(encrypted_key)
+
+    return des_key
 
 
-def encrypt_des_key_rsa(key: bytes, public_key) -> bytes:
-    if len(key) != 8:
-        raise ValueError("DES key phải 8 bytes")
-    return PKCS1_OAEP.new(public_key).encrypt(key)
+# =========================================================
+# Packet helpers
+# =========================================================
+
+def build_packet(
+    encrypted_des_key: bytes,
+    ciphertext: bytes,
+    sha256_digest: bytes
+) -> bytes:
+    """
+    Build packet format:
+
+    [len_key: 4 bytes]
+    [encrypted_des_key]
+    [len_cipher: 4 bytes]
+    [ciphertext]
+    [sha256_hash: 32 bytes]
+    """
+
+    packet = b""
+
+    packet += struct.pack("!I", len(encrypted_des_key))
+    packet += encrypted_des_key
+
+    packet += struct.pack("!I", len(ciphertext))
+    packet += ciphertext
+
+    packet += sha256_digest
+
+    return packet
 
 
-def decrypt_des_key_rsa(enc: bytes, private_key) -> bytes:
-    key = PKCS1_OAEP.new(private_key).decrypt(enc)
-    if len(key) != 8:
-        raise ValueError("DES key sai")
-    return key
+def parse_packet(packet: bytes):
+    """
+    Parse packet and return:
 
+    (
+        encrypted_des_key,
+        ciphertext,
+        sha256_digest
+    )
+    """
 
-# =========================
-# PACKET
-# =========================
-def pack_u32(data: bytes) -> bytes:
-    return struct.pack("!I", len(data))
+    offset = 0
 
+    # Read encrypted key length
+    len_key = struct.unpack("!I", packet[offset:offset + 4])[0]
+    offset += 4
 
-def unpack_u32(data: bytes) -> int:
-    return struct.unpack("!I", data)[0]
+    # Read encrypted key
+    encrypted_des_key = packet[offset:offset + len_key]
+    offset += len_key
 
+    # Read ciphertext length
+    len_cipher = struct.unpack("!I", packet[offset:offset + 4])[0]
+    offset += 4
 
-def build_secure_packet(enc_key: bytes, ciphertext: bytes, hash_val: bytes) -> bytes:
+    # Read ciphertext
+    ciphertext = packet[offset:offset + len_cipher]
+    offset += len_cipher
+
+    # Read SHA256 hash
+    sha256_digest = packet[offset:offset + SHA256_SIZE]
+
     return (
-        pack_u32(enc_key) +
-        enc_key +
-        pack_u32(ciphertext) +
-        ciphertext +
-        hash_val
+        encrypted_des_key,
+        ciphertext,
+        sha256_digest
     )
 
 
-def parse_secure_packet(packet: bytes):
-    c = 0
+# =========================================================
+# Socket helpers
+# =========================================================
 
-    klen = unpack_u32(packet[c:c+4]); c += 4
-    enc_key = packet[c:c+klen]; c += klen
-
-    clen = unpack_u32(packet[c:c+4]); c += 4
-    ciphertext = packet[c:c+clen]; c += clen
-
-    hash_val = packet[c:c+32]
-
-    return enc_key, ciphertext, hash_val
-
-
-# =========================
-# HIGH LEVEL
-# =========================
-def build_sender_payload(plaintext: bytes, public_key):
-    hash_val = sha256_digest(plaintext)
-
-    key, iv, ciphertext = encrypt_des_cbc(plaintext)
-    enc_key = encrypt_des_key_rsa(key, public_key)
-
-    packet = build_secure_packet(enc_key, ciphertext, hash_val)
-
-    return packet, key, ciphertext, hash_val
-
-
-def open_receiver_payload(packet: bytes, private_key):
-    enc_key, ciphertext, hash_val = parse_secure_packet(packet)
-
-    key = decrypt_des_key_rsa(enc_key, private_key)
-    plaintext = decrypt_des_cbc(key, ciphertext)
-
-    return plaintext, sha256_digest(plaintext) == hash_val
-
-
-# =========================
-# SOCKET
-# =========================
-def recv_exact(conn, n: int) -> bytes:
+def recv_exact(sock, num_bytes):
+    """
+    Receive exactly num_bytes from socket
+    """
     data = b""
-    while len(data) < n:
-        chunk = conn.recv(n - len(data))
+
+    while len(data) < num_bytes:
+        chunk = sock.recv(num_bytes - len(data))
+
         if not chunk:
-            raise ConnectionError("Socket closed")
+            raise ConnectionError("Socket connection closed")
+
         data += chunk
+
     return data
 
 
-def recv_secure_packet(conn):
-    klen = unpack_u32(recv_exact(conn, 4))
-    enc_key = recv_exact(conn, klen)
+def send_packet(sock, packet: bytes):
+    """
+    Send packet with length prefix
 
-    clen = unpack_u32(recv_exact(conn, 4))
-    ciphertext = recv_exact(conn, clen)
+    Format:
+        [packet_length: 4 bytes]
+        [packet]
+    """
 
-    hash_val = recv_exact(conn, 32)
+    packet_length = struct.pack("!I", len(packet))
 
-    return enc_key, ciphertext, hash_val
+    sock.sendall(packet_length + packet)
+
+
+def receive_packet(sock) -> bytes:
+    """
+    Receive packet with length prefix
+    """
+
+    raw_length = recv_exact(sock, 4)
+
+    packet_length = struct.unpack("!I", raw_length)[0]
+
+    packet = recv_exact(sock, packet_length)
+
+    return packet
