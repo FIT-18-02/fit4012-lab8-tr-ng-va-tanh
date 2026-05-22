@@ -56,7 +56,7 @@ def encrypt_des_cbc(plaintext: bytes) -> Tuple[bytes, bytes, bytes]:
 
 def decrypt_des_cbc(key: bytes, iv: bytes, ciphertext: bytes) -> bytes:
     """
-    Decrypt DES-CBC ciphertext.
+    Decrypt DES-CBC ciphertext and remove padding.
     """
 
     cipher = DES.new(key, DES.MODE_CBC, iv)
