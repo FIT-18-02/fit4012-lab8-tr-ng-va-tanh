@@ -80,11 +80,11 @@ def generate_iv() -> bytes:
 def des_encrypt(plaintext: bytes, key: bytes) -> bytes:
     """
     Encrypt plaintext using DES-CBC.
-    Điểu chỉnh thứ tự đối số (plaintext, key) phổ thông hoặc bọc linh hoạt.
+    Điều chỉnh thứ tự đối số (plaintext, key) phổ thông hoặc bọc linh hoạt.
     Returns:
         iv + ciphertext
     """
-    # Đảo bảo linh hoạt nếu vị trí đối số truyền vào bị ngược giữa (key, plaintext)
+    # Đảm bảo linh hoạt nếu vị trí đối số truyền vào bị ngược giữa (key, plaintext)
     if len(plaintext) == DES_KEY_SIZE and len(key) != DES_KEY_SIZE:
         key, plaintext = plaintext, key
 
@@ -151,7 +151,7 @@ def rsa_encrypt(data: bytes, public_key) -> bytes:
     Hỗ trợ tiếp nhận cả đường dẫn file, bytes PEM, hoặc đối tượng Key.
     """
     if isinstance(public_key, (str, bytes)):
-        if isinstance(public_key, str) and ( public_key.endswith('.pem') or '/' in public_key or '\\' in public_key ):
+        if isinstance(public_key, str) and (public_key.endswith('.pem') or '/' in public_key or '\\' in public_key):
             public_key = load_public_key(public_key)
         else:
             public_key = RSA.import_key(public_key)
@@ -166,7 +166,7 @@ def rsa_decrypt(encrypted_data: bytes, private_key) -> bytes:
     Hỗ trợ tiếp nhận cả đường dẫn file, bytes PEM, hoặc đối tượng Key.
     """
     if isinstance(private_key, (str, bytes)):
-        if isinstance(private_key, str) and ( private_key.endswith('.pem') or '/' in private_key or '\\' in private_key ):
+        if isinstance(private_key, str) and (private_key.endswith('.pem') or '/' in private_key or '\\' in private_key):
             private_key = load_private_key(private_key)
         else:
             private_key = RSA.import_key(private_key)
@@ -200,7 +200,6 @@ def build_packet(
 ) -> bytes:
     """
     Build Lab 8 packet format.
-
     Format:
         [len_key: 4 bytes]
         [encrypted_des_key]
@@ -209,17 +208,11 @@ def build_packet(
         [sha256_hash: 32 bytes]
     """
     packet = b""
-    # encrypted DES key length
     packet += pack_u32(len(encrypted_des_key))
-    # encrypted DES key
     packet += encrypted_des_key
-    # ciphertext length
     packet += pack_u32(len(ciphertext))
-    # ciphertext
     packet += ciphertext
-    # SHA256 hash
     packet += sha256_digest
-
     return packet
 
 
@@ -229,23 +222,18 @@ def parse_packet(packet: bytes):
     """
     offset = 0
 
-    # encrypted key length
     len_key = unpack_u32(packet[offset:offset + 4])
     offset += 4
 
-    # encrypted key
     encrypted_key = packet[offset:offset + len_key]
     offset += len_key
 
-    # ciphertext length
     len_cipher = unpack_u32(packet[offset:offset + 4])
     offset += 4
 
-    # ciphertext
     ciphertext = packet[offset:offset + len_cipher]
     offset += len_cipher
 
-    # SHA256 hash
     sha256_digest = packet[offset:offset + SHA256_DIGEST_SIZE]
 
     return (
@@ -287,12 +275,12 @@ def receive_packet(sock) -> bytes:
     Đọc gói tin trực tiếp từ luồng mạng dựa theo cấu trúc Header tuần tự:
     Bóc len_key -> Đọc key -> Bóc len_cipher -> Đọc cipher -> Đọc 32 bytes hash.
     """
-    # 1. Lấy độ dài key mã hóa
+    # 1. Lấy độ dài key mã hóa và đọc key
     raw_len_key = recv_exact(sock, 4)
     len_key = unpack_u32(raw_len_key)
     enc_key = recv_exact(sock, len_key)
     
-    # 2. Lấy độ dài bản mã
+    # 2. Lấy độ dài bản mã và đọc cipher
     raw_len_cipher = recv_exact(sock, 4)
     len_cipher = unpack_u32(raw_len_cipher)
     ciphertext = recv_exact(sock, len_cipher)
@@ -300,7 +288,6 @@ def receive_packet(sock) -> bytes:
     # 3. Lấy hash toàn vẹn
     sha_hash = recv_exact(sock, SHA256_DIGEST_SIZE)
     
-    # Gom cụm lại thành chuỗi packet hoàn chỉnh để xử lý đồng bộ
     return raw_len_key + enc_key + raw_len_cipher + ciphertext + sha_hash
 
 
