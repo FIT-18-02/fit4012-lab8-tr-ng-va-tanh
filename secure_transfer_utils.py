@@ -17,7 +17,6 @@ DES_IV_SIZE = 8
 
 RSA_KEY_SIZE = 2048
 
-LENGTH_HEADER_SIZE = 4
 SHA256_DIGEST_SIZE = 32
 
 
@@ -39,9 +38,9 @@ def encrypt_des_cbc(plaintext: bytes) -> Tuple[bytes, bytes, bytes]:
     key, iv = generate_des_key_iv()
 
     cipher = DES.new(key, DES.MODE_CBC, iv)
-    ciphertext = cipher.encrypt(pad(plaintext, 8))
+    ct = cipher.encrypt(pad(plaintext, 8))
 
-    return key, iv, iv + ciphertext
+    return key, iv, iv + ct
 
 
 def decrypt_des_cbc(key: bytes, data: bytes) -> bytes:
@@ -63,15 +62,14 @@ def load_private_key(path: str | Path):
     return RSA.import_key(Path(path).read_bytes())
 
 
-def encrypt_des_key_rsa(des_key: bytes, public_key) -> bytes:
-    if len(des_key) != 8:
+def encrypt_des_key_rsa(key: bytes, public_key) -> bytes:
+    if len(key) != 8:
         raise ValueError("DES key phải 8 bytes")
-    return PKCS1_OAEP.new(public_key).encrypt(des_key)
+    return PKCS1_OAEP.new(public_key).encrypt(key)
 
 
-def decrypt_des_key_rsa(enc_key: bytes, private_key) -> bytes:
-    key = PKCS1_OAEP.new(private_key).decrypt(enc_key)
-
+def decrypt_des_key_rsa(enc: bytes, private_key) -> bytes:
+    key = PKCS1_OAEP.new(private_key).decrypt(enc)
     if len(key) != 8:
         raise ValueError("DES key sai")
     return key
