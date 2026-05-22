@@ -27,7 +27,6 @@ def generate_des_key_iv() -> Tuple[bytes, bytes]:
     """
     Generate random DES key and IV.
     """
-
     key = get_random_bytes(DES_KEY_SIZE)
     iv = get_random_bytes(DES_BLOCK_SIZE)
 
