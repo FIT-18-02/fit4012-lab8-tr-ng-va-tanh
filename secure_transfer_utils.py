@@ -15,7 +15,6 @@ DES_KEY_SIZE = 8
 DES_BLOCK_SIZE = 8
 DES_IV_SIZE = 8
 SHA256_DIGEST_SIZE = 32
-LEN_FIELD_SIZE = 4
 
 
 # =========================================================
@@ -33,7 +32,6 @@ def pkcs7_unpad(data: bytes) -> bytes:
         raise ValueError("Empty data")
     
     pad_len = data[-1]
-    
     if pad_len < 1 or pad_len > DES_BLOCK_SIZE or data[-pad_len:] != bytes([pad_len] * pad_len):
         raise ValueError("Invalid PKCS7 padding")
     
@@ -41,7 +39,7 @@ def pkcs7_unpad(data: bytes) -> bytes:
 
 
 # =========================================================
-# HASH
+# SHA256
 # =========================================================
 
 def sha256_hash(data: bytes) -> bytes:
@@ -61,7 +59,7 @@ def generate_iv() -> bytes:
 
 
 def des_encrypt(key: bytes, plaintext: bytes) -> bytes:
-    """Encrypt using DES-CBC, return iv + ciphertext"""
+    """Encrypt using DES-CBC → return iv + ciphertext"""
     if len(key) != DES_KEY_SIZE:
         raise ValueError("DES key must be 8 bytes")
 
@@ -112,7 +110,7 @@ def rsa_decrypt(private_key, encrypted_data: bytes) -> bytes:
 
 
 # =========================================================
-# PACKET BUILD / PARSE
+# PACKET BUILD / PARSE (THEO ĐÚNG PROTOCOL LAB 8)
 # =========================================================
 
 def pack_u32(value: int) -> bytes:
@@ -124,18 +122,18 @@ def unpack_u32(data: bytes) -> int:
 
 
 def build_packet(encrypted_des_key: bytes, ciphertext: bytes, sha256_digest: bytes) -> bytes:
-    """Build packet theo đúng protocol Lab 8"""
+    """Build packet theo đúng format Lab 8"""
     packet = b""
-    packet += pack_u32(len(encrypted_des_key))          # len_key
-    packet += encrypted_des_key                          # encrypted DES key
-    packet += pack_u32(len(ciphertext))                  # len_cipher
-    packet += ciphertext                                 # IV + ciphertext
-    packet += sha256_digest                              # SHA-256 hash
+    packet += pack_u32(len(encrypted_des_key))   # len_key
+    packet += encrypted_des_key                   # encrypted DES key
+    packet += pack_u32(len(ciphertext))           # len_cipher
+    packet += ciphertext                          # IV(8) + ciphertext
+    packet += sha256_digest                       # SHA-256 (32 bytes)
     return packet
 
 
 def parse_packet(packet: bytes):
-    """Parse packet theo protocol"""
+    """Parse packet theo protocol Lab 8"""
     offset = 0
 
     len_key = unpack_u32(packet[offset:offset + 4])
@@ -168,22 +166,30 @@ def recv_exact(sock, size: int) -> bytes:
 
 
 def send_packet(sock, packet: bytes):
-    """Send packet with length prefix"""
-    packet_length = pack_u32(len(packet))
-    sock.sendall(packet_length + packet)
+    """Gửi trực tiếp packet (KHÔNG thêm length prefix) - đúng protocol Lab 8"""
+    sock.sendall(packet)
 
 
 def receive_packet(sock) -> bytes:
-    """Receive packet with length prefix"""
-    raw_length = recv_exact(sock, 4)
-    packet_length = unpack_u32(raw_length)
-    if packet_length > 65536:  # safety limit
-        raise ValueError("Packet too large")
-    return recv_exact(sock, packet_length)
+    """Nhận packet theo cấu trúc Lab 8 (không có outer length prefix)"""
+    # Đọc len_key
+    raw_len_key = recv_exact(sock, 4)
+    len_key = unpack_u32(raw_len_key)
+    enc_key = recv_exact(sock, len_key)
+
+    # Đọc len_cipher
+    raw_len_cipher = recv_exact(sock, 4)
+    len_cipher = unpack_u32(raw_len_cipher)
+    ciphertext = recv_exact(sock, len_cipher)
+
+    # Đọc hash
+    sha_hash = recv_exact(sock, SHA256_DIGEST_SIZE)
+
+    return raw_len_key + enc_key + raw_len_cipher + ciphertext + sha_hash
 
 
 # =========================================================
-# BACKWARD COMPATIBILITY / ALIASES
+# ALIASES (Backward Compatibility)
 # =========================================================
 
 des_encrypt_cbc = des_encrypt
